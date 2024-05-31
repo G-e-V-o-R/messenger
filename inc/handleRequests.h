@@ -9,6 +9,9 @@
 #include <cstdlib>                     // Needed for accessing environment variables using std::getenv. This can be useful for obtaining configuration or system-related information.
 #include <user.h>
 
+extern std::multimap<int, std::string> retrieve_messages_with_sender(pqxx::connection& conn, const std::string& user_id);
+
+
 namespace beast = boost::beast; 
 namespace http = beast::http;   
 namespace net = boost::asio;      
@@ -43,8 +46,6 @@ beast::string_view mime_type(beast::string_view path) {
 
     return "application/text";
 }
-
-
 
 // Append an HTTP rel-path to a local filesystem path.
 // The returned path is normalized for the platform.
@@ -83,7 +84,7 @@ static std::string gen_session_id(size_t&& length){
 public:
 
     template <class Body, class Allocator>
-    http::response<http::string_body>  make_response(
+    http::response<http::string_body>  static make_response(
         http::status status, const std::string& body,
         const http::request<Body, http::basic_fields<Allocator>>& req,
         const std::string&& content_type)
@@ -98,7 +99,7 @@ public:
     }
     
     template <class Body, class Allocator>
-    http::message_generator registration(
+    http::message_generator static registration(
         const http::request<Body, http::basic_fields<Allocator>>& req,
         pqxx::connection& conn)
     {    
@@ -126,7 +127,7 @@ public:
     }
     
     template <class Body, class Allocator>
-    http::message_generator  log_in(
+    http::message_generator  static log_in(
         http::request<Body, http::basic_fields<Allocator>>& req,
         pqxx::connection& conn)
     {
@@ -152,10 +153,20 @@ public:
                 txn.quote(currentUser_sessionId) + ")");
                 txn.commit();
 
-                // Construct JSON response body
+                std::multimap<int, std::string> messages = retrieve_messages_with_sender(conn, std::to_string(currentUser_userId));
+
+
                 json response_body = {
-                    {"session_id", currentUser_sessionId}
+                    {"session_id", currentUser_sessionId},
+                    {"messages", json::array()}
                 };
+
+                for (const auto& message : messages) {
+                    json message_json;
+                    message_json["sender_id"] = message.first;
+                    message_json["message"] = message.second;
+                    response_body["messages"].push_back(message_json);
+                }
 
                 // Serialize JSON to string
                 std::string json_string = response_body.dump();
@@ -173,7 +184,7 @@ public:
 
     
     template <class Body, class Allocator>
-    http::message_generator log_out(
+    http::message_generator static log_out(
         const http::request<Body, http::basic_fields<Allocator>>& req,
         pqxx::connection& conn,
         SessionManager& sessionManager)
@@ -229,7 +240,7 @@ public:
 
     if (req.method() == http::verb::post && req.target() == "/login")
     {
-            return log_in(req, conn);
+        return log_in(req, conn);
     }
 
     if (req.method() == http::verb::post && req.target() == "/logout") 

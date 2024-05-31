@@ -7,7 +7,7 @@
 #include <boost/beast/websocket.hpp>
 #include <cstdlib>
 #include <functional>
-#include <iostream>
+//#include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include <map>
 #include <listener.h>
 #include <webSession.h>
 
@@ -38,13 +39,17 @@ void store_message(pqxx::connection& conn, const std::string& sender_id, const s
     txn.commit();
 }
 
-std::vector<std::string> retrieve_messages(pqxx::connection& conn, const std::string& user_id) {
+std::multimap<int, std::string> retrieve_messages_with_sender(pqxx::connection& conn, const std::string& user_id) {
     pqxx::work txn(conn);
-    pqxx::result r = txn.exec_params("SELECT message FROM messages WHERE recipient_id = $1", user_id);
-    std::vector<std::string> messages;
+    pqxx::result r = txn.exec_params("SELECT from_user, text FROM messages WHERE to_user = $1", user_id);
+    std::multimap<int, std::string> messages;
     for (auto row : r) {
-        messages.push_back(row["message"].c_str());
+        messages.insert({row["from_user"].as<int>(), row["text"].c_str()});
     }
+
+    txn.exec_params("DELETE FROM messages WHERE to_user = $1", user_id);    
+    txn.commit();
+    
     return messages;
 }
 
