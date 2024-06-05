@@ -15,7 +15,7 @@ BIN_DIR = bin
 
 bin/all: bin/messenger
 
-bin/messenger: src/server.cpp #lib/internal.a
+bin/messenger: src/server.cpp inc/session.h inc/webSession.h inc/sessionMeneger.h#lib/internal.a
 	$(CXX) $(CXXFLAGS)  src/server.cpp -o bin/messenger $(LDFLAGS)
 
 #lib/internal.a: obj/handleRequests.o

@@ -26,79 +26,46 @@ namespace net = boost::asio;
 using json = nlohmann::json;
 using tcp = net::ip::tcp;
 
-class listener : public std::enable_shared_from_this<listener>
+class Listener : public std::enable_shared_from_this<Listener>
 {
-    net::io_context& ioc_;
-    tcp::acceptor acceptor_;
-    std::shared_ptr<std::string const> doc_root_;
-    pqxx::connection& conn_;
+    net::io_context& m_ioc;
+    tcp::acceptor m_acceptor;
+    std::shared_ptr<std::string const> m_doc_root;
+    pqxx::connection& m_conn;
 
-private:
-
-    void fail(beast::error_code ec, char const* what)
-    {
-       std::cerr << what << ": " << ec.message() << "\n";
+    void fail(beast::error_code ec, const char* what){
+        std::cerr << what << " : " << ec.message();
     }
 
-public:
-
-    listener(net::io_context& ioc, tcp::endpoint endpoint, std::shared_ptr<std::string const> const& doc_root, pqxx::connection& conn)
-        : ioc_(ioc), acceptor_(net::make_strand(ioc)), doc_root_(doc_root), conn_(conn)
-    {
-        beast::error_code ec;
-
-        acceptor_.open(endpoint.protocol(), ec);
-        if(ec)
-        {
-            fail(ec, "open");
-            return;
-        }
-
-        acceptor_.set_option(net::socket_base::reuse_address(true), ec);
-        if(ec)
-        {
-            fail(ec, "set_option");
-            return;
-        }
-
-        acceptor_.bind(endpoint, ec);
-        if(ec)
-        {
-            fail(ec, "bind");
-            return;
-        }
-
-        acceptor_.listen(net::socket_base::max_listen_connections, ec);
-        if(ec)
-        {
-            fail(ec, "listen");
-            return;
-        }
+    void do_accept(){
+        m_acceptor.async_accept(net::make_strand(m_ioc),
+                                beast::bind_front_handler(&Listener::on_accept, shared_from_this()));
     }
 
-    void run()
-    {
+    void on_accept(beast::error_code ec, tcp::socket socket){
+        if(ec){
+            fail(ec, "accept");
+        }else{
+            std::make_shared<Session>(std::move(socket), m_doc_root, m_conn)->run();
+        }
+
         do_accept();
     }
 
-    void do_accept()
+    public:
+
+    Listener(net::io_context& ioc, tcp::endpoint endpoint, std::shared_ptr<std::string const> doc_root, pqxx::connection& conn)
+    : m_ioc(ioc), m_acceptor(net::make_strand(ioc)), m_doc_root(doc_root), m_conn(conn)
     {
-        acceptor_.async_accept(net::make_strand(ioc_),
-            beast::bind_front_handler(&listener::on_accept, shared_from_this()));
+        beast::error_code ec;
+
+        m_acceptor.open(endpoint.protocol(), ec);
+        m_acceptor.set_option(net::socket_base::reuse_address(true), ec);
+        m_acceptor.bind(endpoint, ec);
+        m_acceptor.listen(net::socket_base::max_listen_connections, ec);
     }
 
-    void on_accept(beast::error_code ec, tcp::socket socket)
-    {
-        if(ec)
-        {
-            fail(ec, "accept");
-        }
-        else
-        {
-            auto new_session = std::make_shared<Session>(std::move(socket), doc_root_, conn_);
-            new_session->run();
-        }
-
+    void run(){
         do_accept();
     }
 };

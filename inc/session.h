@@ -91,9 +91,10 @@ void get_user_id_from_session_id()
 
     if (!res.empty()) {
         currentUser_.user_id =  res[0][0].as<std::string>();
+        std::cout << "uder_id : " << currentUser_.user_id << std::endl;
+    }else{
+        throw std::runtime_error("Session ID not found in database");
     }
-
-    throw std::runtime_error("Session ID not found in database");
 }
 
 
@@ -112,6 +113,9 @@ void on_read(beast::error_code ec, std::size_t bytes_transferred)
 
         if (req_.base().find("Session-ID") != req_.base().end()) {
             currentUser_.session_id = std::string(req_.base().at("Session-ID"));
+            std::cout << currentUser_.session_id << std::endl;
+        }else{
+            std::cout << "HEader error: " << std::endl;
         }
 
         try {

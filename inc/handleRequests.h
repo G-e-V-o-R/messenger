@@ -1,6 +1,8 @@
 #include <boost/beast/core.hpp>        // Required for handling HTTP requests and responses using the Boost Beast library.
 #include <boost/beast/http.hpp>        // Necessary for HTTP-related functionalities, such as parsing HTTP requests and generating HTTP responses.
-#include <boost/beast/version.hpp>     // Provides version information for the Boost Beast library.
+#include <boost/beast/version.hpp> 
+#include <boost/asio/ip/tcp.hpp>
+    // Provides version information for the Boost Beast library.
 #include <pqxx/pqxx>                   // Needed for interacting with PostgreSQL databases using the pqxx library.
 #include <nlohmann/json.hpp>           // Required for parsing and serializing JSON data using the nlohmann JSON library.
 #include <iostream>                    // Used for printing messages to the standard output stream. Useful for debugging and logging purposes.
@@ -8,6 +10,15 @@
 #include <chrono>                      // Utilized for timing-related functionality, such as measuring execution time or scheduling tasks.
 #include <cstdlib>                     // Needed for accessing environment variables using std::getenv. This can be useful for obtaining configuration or system-related information.
 #include <user.h>
+#include <boost/beast/websocket.hpp>
+#include <boost/beast/websocket/stream.hpp>
+#include <boost/beast/websocket/detail/mask.hpp> // Ensure this include is present
+#include <boost/beast/websocket/detail/hybi13.hpp> // Include for make_sec_ws_key
+#include <boost/beast/core/detail/base64.hpp>
+#include <boost/beast/core/detail/base64.ipp>
+
+
+
 
 extern std::multimap<int, std::string> retrieve_messages_with_sender(pqxx::connection& conn, const std::string& user_id);
 
@@ -17,6 +28,8 @@ namespace http = beast::http;
 namespace net = boost::asio;      
 using tcp = boost::asio::ip::tcp; 
 using json = nlohmann::json;
+
+class WebSession;
 
 class HandleRequests{
 private:
@@ -65,8 +78,7 @@ static std::string path_cat(beast::string_view base, beast::string_view path)
 
     return result;
 }
-
-        
+     
 static std::string gen_session_id(size_t&& length){
     std::string randomString;
     const char characters[] = "0123456789"
@@ -81,7 +93,57 @@ static std::string gen_session_id(size_t&& length){
     return randomString;
 }
 
+static int findUserIdByEmail(const std::string& email, pqxx::connection& conn) {
+        try {
+            pqxx::work txn(conn);
+            pqxx::result result = txn.exec("SELECT id FROM users WHERE email = " + txn.quote(email));
+            txn.commit();
+            if (!result.empty()) {
+                return result[0][0].as<int>();
+            } else {
+                return -1;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Database error: " << e.what() << std::endl;
+            return -1;
+        }
+    }
+
+
+
+static void fail(beast::error_code ec, char const* what)
+{
+    std::cerr << what << ": " << ec.message() << "\n";
+}
 public:
+
+    template <class Body, class Allocator>
+    static http::message_generator find_user_id_by_email(
+        const http::request<Body, http::basic_fields<Allocator>>& req,
+        pqxx::connection& conn)
+    {
+        // Extract email from the request body
+        beast::string_view body = req.body();
+        json json_body = json::parse(body);
+        std::string email = json_body["email"];
+
+        // Find user ID based on email
+        int user_id = findUserIdByEmail(email, conn);
+
+        // Prepare response based on the result
+        if (user_id != -1) {
+            // User found, return user ID in the response
+            json response_body = {
+                {"user_id", user_id}
+            };
+            std::string json_string = response_body.dump();
+            return make_response(http::status::ok, json_string, req, "application/json");
+        } else {
+            // User not found, return error response
+            std::string error_message = "User not found for email: " + email;
+            return make_response(http::status::not_found, error_message, req, "text/plain");
+        }
+    }
 
     template <class Body, class Allocator>
     http::response<http::string_body>  static make_response(
@@ -97,6 +159,58 @@ public:
         res.prepare_payload();
         return res;
     }
+  
+  
+
+
+
+
+
+#include <boost/beast/core/detail/base64.hpp>
+
+template <class Body, class Allocator>
+static boost::beast::http::message_generator websocket_upgrade_response(
+    const boost::beast::http::request<Body, boost::beast::http::basic_fields<Allocator>>& req) {
+    namespace http = boost::beast::http;
+
+        // Generate the WebSocket response
+        http::response<http::empty_body> res{http::status::switching_protocols, req.version()};
+        res.set(http::field::upgrade, "websocket");
+        res.set(http::field::connection, "Upgrade");
+
+        // Generate the Sec-WebSocket-Accept header
+        std::string key = req[http::field::sec_websocket_key];
+        boost::beast::websocket::detail::sec_ws_key_type accept_key;
+        
+        // Copy the key into the accept_key buffer
+        std::copy(key.begin(), key.end(), accept_key.begin());
+
+        // Ensure the accept_key is correctly null-terminated
+        accept_key[key.size()] = '\0';
+
+        // Generate the accept key
+        boost::beast::websocket::detail::make_sec_ws_key(accept_key);
+
+        // Encode the accept key to base64
+        std::string accept_key_base64;
+        boost::beast::detail::base64::encode(&accept_key_base64, accept_key.data(), accept_key.size());
+
+        res.set(http::field::sec_websocket_accept, accept_key_base64);
+
+        return res;
+}
+
+
+
+
+
+
+
+
+
+
+
+
     
     template <class Body, class Allocator>
     http::message_generator static registration(
@@ -248,7 +362,33 @@ public:
         return log_out(req, conn, session_manager);
     }
 
+    if (req.method() == http::verb::post && req.target() == "/search") 
+    {
+        return find_user_id_by_email(req, conn);
+    }
 
+    // if (websocket::is_upgrade(req)) 
+    // {
+    //     beast::error_code ec;
+
+    //     if (req.base().find("Session-ID") != req.base().end()) {
+    //         currentUser.session_id = std::string(req.base().at("Session-ID"));
+    //     }else{
+    //         return make_response(http::status::bad_request, "session_id not found", req, "text/plain");
+    //     }
+
+    //     try {
+    //         get_user_id_from_session_id(conn, currentUser);
+    //         auto web_session = std::make_shared<WebSession>(stream, currentUser.user_id, conn);
+    //         web_session->init();
+    //         web_session->run(std::move(req));
+    //         //return make_response(http::status::accepted, "Connection was upgrated to Websocket", req, "text/plain");
+
+    //     } catch (const std::exception& e) {
+    //         std::cerr << "Error finding user by session_id: " << e.what() << std::endl;
+    //         return make_response(http::status::bad_request, "session_id not found", req, "text/plain");
+    //     }
+    // }
 
     // Make sure we can handle the method
     if( req.method() != http::verb::get &&

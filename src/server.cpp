@@ -7,7 +7,7 @@
 #include <boost/beast/websocket.hpp>
 #include <cstdlib>
 #include <functional>
-//#include <iostream>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -18,7 +18,7 @@
 #include <nlohmann/json.hpp>
 #include <map>
 #include <listener.h>
-#include <webSession.h>
+#include <webSession.h>//
 
 namespace beast = boost::beast;
 namespace http = beast::http;
@@ -56,40 +56,80 @@ std::multimap<int, std::string> retrieve_messages_with_sender(pqxx::connection& 
 
 int main(int argc, char* argv[])
 {
-    if (argc != 5)
+
+    if( argc != 5 )
     {
-        std::cerr <<
-            "Usage: http-server-sync <address> <port> <doc_root> <threads>\n" <<
-            "Example:\n" <<
-            "    http-server-sync 0.0.0.0 8080 . 1\n";
+        std::cerr << "run program like this: ip, port, doc_root_path, thread-counts \n"
+        << "example 127.0.0.1, 8080, ., 2"; 
         return EXIT_FAILURE;
     }
-    auto const address = net::ip::make_address(argv[1]);
-    auto const port = static_cast<unsigned short>(std::atoi(argv[2]));
+
+    net::ip::address address = net::ip::make_address(argv[1]);
+    net::ip::port_type port = static_cast<unsigned short>(std::stoi(argv[2]));
     auto const doc_root = std::make_shared<std::string>(argv[3]);
-    auto const threads = std::max<int>(1, std::atoi(argv[4]));
+    int threads = std::max(1, std::atoi(argv[4]));
 
-    net::io_context ioc{threads};
+    // DB code
+    pqxx::connection conn("dbname=messenger user=postgres password=postgres hostaddr=127.0.0.1 port=5432");
+    if(conn.is_open())
+    {
+        std::cout << "Connected to DB" << std::endl;
+    }else
+    {
+        std::cout << "Connection to DB failed";
+        return EXIT_FAILURE;
+    }
 
-   pqxx::connection conn("dbname=messenger user=postgres password=postgres hostaddr=127.0.0.1 port=5432");
+    net::io_context ioc {threads};
+    std::make_shared<Listener>(ioc, tcp::endpoint{address, port}, doc_root, conn)->run();
 
-    if (conn.is_open()) {
-        std::cout << "Connected to database successfully: " << conn.dbname() << std::endl;
+    std::vector<std::thread> thread_vector;
+    thread_vector.reserve(threads-1);
 
-    } else {
-        std::cerr << "Failed to connect to database" << std::endl;
-        return 1;
-    }    std::make_shared<listener>(ioc, tcp::endpoint{address, port}, doc_root, conn)->run();
-
-    std::vector<std::thread> v;
-    v.reserve(threads - 1);
-    for (auto i = threads - 1; i > 0; --i)
-        v.emplace_back(
-            [&ioc]
-            {
-                ioc.run();
-            });
+    for(int i = 0; i < threads-1; ++i){
+        thread_vector.emplace_back([&ioc]{ioc.run();});
+    }
     ioc.run();
 
+
     return EXIT_SUCCESS;
+
+
+
+
+
+
+
+
+    /*if( argc != 5 )
+    {
+        std::cerr << "error" ;
+        return EXIT_FAILURE;
+    }
+
+    auto const adress = net::ip::make_address(argv[1]);
+    auto const port = static_cast<unsigned_short>(std::atoi(argv[2]));
+    auto const doc_root = std::make_shared<std::string>(argv[3]);
+    int threads = std::max(1, std::atoi(argv[4]));
+
+    pqxx::connection conn("dbname=messenger user=postgres password=postgres hostaddr=127.0.0.1 port=5432");
+    if(conn.is_open()){
+        std::cout << "Connected to db" << std::endl;
+    }else{
+        std::cout << "Connection to DB failed";
+        return EXIT_FAILURE;
+    }
+
+    net::io_context ioc {threads};
+    std::make_shared<listener>(ioc, tcp::endpoint {adress, port}, doc_root, conn)->run();
+
+    std::vector<std::thread> thread_vector;
+    thread_vector.reserve(threads-1);
+    for (int i = 0; i < threads-1; ++i){
+        thread_vector.emplace_back([&ioc]{ioc.run();});
+    }
+    ioc.run();
+    return EXIT_SUCCESS;
+*/
+
 }
