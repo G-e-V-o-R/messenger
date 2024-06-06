@@ -18,9 +18,9 @@
 #include <nlohmann/json.hpp>
 #include <map>
 #include <listener.h>
-#include <webSession.h>//
+#include <webSession.h>
 
-namespace beast = boost::beast;
+namespace beast = boost::beast;//
 namespace http = beast::http;
 namespace websocket = beast::websocket;
 namespace net = boost::asio;
@@ -93,43 +93,5 @@ int main(int argc, char* argv[])
 
 
     return EXIT_SUCCESS;
-
-
-
-
-
-
-
-
-    /*if( argc != 5 )
-    {
-        std::cerr << "error" ;
-        return EXIT_FAILURE;
-    }
-
-    auto const adress = net::ip::make_address(argv[1]);
-    auto const port = static_cast<unsigned_short>(std::atoi(argv[2]));
-    auto const doc_root = std::make_shared<std::string>(argv[3]);
-    int threads = std::max(1, std::atoi(argv[4]));
-
-    pqxx::connection conn("dbname=messenger user=postgres password=postgres hostaddr=127.0.0.1 port=5432");
-    if(conn.is_open()){
-        std::cout << "Connected to db" << std::endl;
-    }else{
-        std::cout << "Connection to DB failed";
-        return EXIT_FAILURE;
-    }
-
-    net::io_context ioc {threads};
-    std::make_shared<listener>(ioc, tcp::endpoint {adress, port}, doc_root, conn)->run();
-
-    std::vector<std::thread> thread_vector;
-    thread_vector.reserve(threads-1);
-    for (int i = 0; i < threads-1; ++i){
-        thread_vector.emplace_back([&ioc]{ioc.run();});
-    }
-    ioc.run();
-    return EXIT_SUCCESS;
-*/
 
 }

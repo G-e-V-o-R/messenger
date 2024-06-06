@@ -19,6 +19,7 @@
 #include <mutex>
 #include "sessionMeneger.h"
 #include <user.h>
+#include "handleRequests.h"
 
 class SessionManager;
 extern SessionManager session_manager;
@@ -30,15 +31,14 @@ namespace http = beast::http;
 namespace websocket = beast::websocket;
 namespace net = boost::asio;
 using tcp = net::ip::tcp;
+using json = nlohmann::json;
+
 
 class WebSession : public std::enable_shared_from_this<WebSession> {
     websocket::stream<beast::tcp_stream> ws_;
     beast::flat_buffer buffer_;
     user currentUser_;
     pqxx::connection& conn_;
-    std::mutex session_manager_mutex;
-    std::mutex user_mutex;
-
 
 private:
 
@@ -48,8 +48,8 @@ private:
     }
 
 public:
-    explicit WebSession( tcp::socket&& socket, const std::string& user_id, pqxx::connection& conn)
-        : ws_(std::move(socket)), conn_(conn)
+    explicit WebSession( tcp::socket socket, const std::string& user_id, pqxx::connection& conn)
+        : ws_(std::move(socket)), conn_(conn) 
     {
              currentUser_.user_id = user_id;
     }
@@ -67,13 +67,13 @@ public:
 
     void run( http::request<http::string_body> req) 
     {
-        std::cout << "WebSession run(): " << std::endl;
+        std::cout << "run(): " << std::endl;
         ws_.async_accept( req, beast::bind_front_handler(&WebSession::on_accept, shared_from_this()));
     }
 
     void on_accept( beast::error_code ec) 
     {
-        std::cout << "WebSession on accept(): " << std::endl;
+        std::cout << "on accept(): " << std::endl;
         if (ec) {
             return fail(ec, "accept");
         }
@@ -82,8 +82,6 @@ public:
 
     void do_read() 
     {
-                std::cout << "WebSession do_read(): " << std::endl;
-
         ws_.async_read( buffer_, beast::bind_front_handler(&WebSession::on_read, shared_from_this()));
     }
 
@@ -97,8 +95,6 @@ public:
             return fail(ec, "read");
         }
 
-        std::cout << "WebSession on_read(): " << std::endl;
-
         std::string message = beast::buffers_to_string(buffer_.data());
         std::cout << "Received message: " << message << std::endl;
         // Process message and route to the intended recipient
@@ -107,37 +103,46 @@ public:
         do_read();
     }
 
-    void handle_message(const std::string& message) {
-    std::cout << "WebSession handle_message(): " << std::endl;
+void handle_message(const std::string& message) {
+    json json_message = json::parse(message);
 
-    //message format: "recipient_id:message_text"
-    auto delimiter_pos = message.find(':');
-    if (delimiter_pos != std::string::npos) {
-        std::string recipient_id = message.substr(0, delimiter_pos);
-        std::string message_text = message.substr(delimiter_pos + 1);
+    if (json_message.contains("type")) {
+        std::string type = json_message["type"];
 
-        // Защитите доступ к session_manager с помощью мьютекса
-        std::lock_guard<std::mutex> lock(session_manager_mutex);
-        std::lock_guard<std::mutex> user_lock(user_mutex);
+        // Пример обработки сообщения типа "search"
+        if (type == "search") {
+            if (json_message.contains("email")) {
+                std::string email = json_message["email"];
+                // Выполнение поиска пользователя по email и отправка ответа
+                int user_id = HandleRequests::findUserIdByEmail(email, conn_);
+                json response = {
+                    {"type", "search_result"},
+                    {"user_id", user_id}
+                };
+                send_message(response.dump());
+            }
+        }
+
+    } else {
+        std::string recipient_id = json_message["recipient_id"];
+        std::string sender_id = json_message["sender_id"];
+        std::string message_text = json_message["message"];
 
         auto recipient_session = session_manager.get_session(recipient_id);
         if (recipient_session) {
-            std::cout << "uxarkeci namaky usery log Out chi exe: " << std::endl;
-            // Проверьте существование сессии перед отправкой сообщения
-            recipient_session->send_message(message_text);
+            std::cout << "Send ONLINE message: " << std::endl;
+            std::string formated_message = sender_id + ":" + message_text;
+            recipient_session->send_message(message);
         } else {
-            std::cout << "Log in chi exel namaky DB uma: " << std::endl;
-            // Защитите доступ к currentUser_ с помощью мьютекса
-            std::lock_guard<std::mutex> user_lock(user_mutex);
-            // Store message in the database if recipient is offline
+            std::cout << "Message is in DATABASE: " << std::endl;
             store_message(conn_, currentUser_.user_id, recipient_id, message_text);
         }
     }
 }
 
+
     void send_message( const std::string& message) 
     {
-        std::cout << "Send-message: " << std::endl;
         ws_.text(true);
         ws_.async_write( net::buffer(message), beast::bind_front_handler(&WebSession::on_write, shared_from_this()));
     }
@@ -148,7 +153,5 @@ public:
             return fail(ec, "write");
         }
         buffer_.consume(buffer_.size());
-
-        do_read();
     }
 };

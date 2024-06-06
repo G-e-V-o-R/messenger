@@ -1,3 +1,5 @@
+#pragma once
+
 #include <boost/beast/core.hpp>        // Required for handling HTTP requests and responses using the Boost Beast library.
 #include <boost/beast/http.hpp>        // Necessary for HTTP-related functionalities, such as parsing HTTP requests and generating HTTP responses.
 #include <boost/beast/version.hpp> 
@@ -21,6 +23,7 @@
 
 
 extern std::multimap<int, std::string> retrieve_messages_with_sender(pqxx::connection& conn, const std::string& user_id);
+extern SessionManager session_manager;
 
 
 namespace beast = boost::beast; 
@@ -93,21 +96,7 @@ static std::string gen_session_id(size_t&& length){
     return randomString;
 }
 
-static int findUserIdByEmail(const std::string& email, pqxx::connection& conn) {
-        try {
-            pqxx::work txn(conn);
-            pqxx::result result = txn.exec("SELECT id FROM users WHERE email = " + txn.quote(email));
-            txn.commit();
-            if (!result.empty()) {
-                return result[0][0].as<int>();
-            } else {
-                return -1;
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Database error: " << e.what() << std::endl;
-            return -1;
-        }
-    }
+
 
 
 
@@ -129,7 +118,6 @@ public:
 
         // Find user ID based on email
         int user_id = findUserIdByEmail(email, conn);
-
         // Prepare response based on the result
         if (user_id != -1) {
             // User found, return user ID in the response
@@ -137,6 +125,9 @@ public:
                 {"user_id", user_id}
             };
             std::string json_string = response_body.dump();
+            std::cout << "find id: " << user_id << std::endl;
+            std::cout << "find: " << json_string << std::endl;
+
             return make_response(http::status::ok, json_string, req, "application/json");
         } else {
             // User not found, return error response
@@ -155,61 +146,11 @@ public:
         res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
         res.set(http::field::content_type, content_type);
         res.keep_alive(req.keep_alive());
+        std::cout << "make_response(): " << body << std::endl;
         res.body() = body;
         res.prepare_payload();
         return res;
     }
-  
-  
-
-
-
-
-
-#include <boost/beast/core/detail/base64.hpp>
-
-template <class Body, class Allocator>
-static boost::beast::http::message_generator websocket_upgrade_response(
-    const boost::beast::http::request<Body, boost::beast::http::basic_fields<Allocator>>& req) {
-    namespace http = boost::beast::http;
-
-        // Generate the WebSocket response
-        http::response<http::empty_body> res{http::status::switching_protocols, req.version()};
-        res.set(http::field::upgrade, "websocket");
-        res.set(http::field::connection, "Upgrade");
-
-        // Generate the Sec-WebSocket-Accept header
-        std::string key = req[http::field::sec_websocket_key];
-        boost::beast::websocket::detail::sec_ws_key_type accept_key;
-        
-        // Copy the key into the accept_key buffer
-        std::copy(key.begin(), key.end(), accept_key.begin());
-
-        // Ensure the accept_key is correctly null-terminated
-        accept_key[key.size()] = '\0';
-
-        // Generate the accept key
-        boost::beast::websocket::detail::make_sec_ws_key(accept_key);
-
-        // Encode the accept key to base64
-        std::string accept_key_base64;
-        boost::beast::detail::base64::encode(&accept_key_base64, accept_key.data(), accept_key.size());
-
-        res.set(http::field::sec_websocket_accept, accept_key_base64);
-
-        return res;
-}
-
-
-
-
-
-
-
-
-
-
-
 
     
     template <class Body, class Allocator>
@@ -272,6 +213,7 @@ static boost::beast::http::message_generator websocket_upgrade_response(
 
                 json response_body = {
                     {"session_id", currentUser_sessionId},
+                    {"user_id", currentUser_userId},
                     {"messages", json::array()}
                 };
 
@@ -364,7 +306,8 @@ static boost::beast::http::message_generator websocket_upgrade_response(
 
     if (req.method() == http::verb::post && req.target() == "/search") 
     {
-        return find_user_id_by_email(req, conn);
+        std::cout << "SEARCHING: " <<std::endl;
+        find_user_id_by_email(req, conn);
     }
 
     // if (websocket::is_upgrade(req)) 
@@ -445,5 +388,21 @@ static boost::beast::http::message_generator websocket_upgrade_response(
     res.content_length(size);
     res.keep_alive(req.keep_alive());
     return res;
+}
+
+static int findUserIdByEmail(const std::string& email, pqxx::connection& conn) {
+        try {
+            pqxx::work txn(conn);
+            pqxx::result result = txn.exec("SELECT id FROM users WHERE email = " + txn.quote(email));
+            txn.commit();
+            if (!result.empty()) {
+                return result[0][0].as<int>();
+            } else {
+                return -1;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Database error: " << e.what() << std::endl;
+            return -1;
+        }
 }
 };
