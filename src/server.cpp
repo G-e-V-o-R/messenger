@@ -1,4 +1,4 @@
-#include <boost/beast/core.hpp>
+#include <boost/beast/core.hpp>//
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -32,22 +32,16 @@ class WebSession;
 class session;
 SessionManager session_manager;
 
-void store_message(pqxx::connection& conn, const std::string& sender_id, const std::string& recipient_id, const std::string& message) {
-    pqxx::work txn(conn);
-    txn.exec_params("INSERT INTO messages (from_user, to_user, text) VALUES ($1, $2, $3)",
-                    sender_id, recipient_id, message);
-    txn.commit();
-}
 
-std::multimap<int, std::string> retrieve_messages_with_sender(pqxx::connection& conn, const std::string& user_id) {
+std::multimap<int, std::string> retrieve_messages_with_sender(pqxx::connection& conn, const std::string& user_id){
     pqxx::work txn(conn);
     pqxx::result r = txn.exec_params("SELECT from_user, text FROM messages WHERE to_user = $1", user_id);
     std::multimap<int, std::string> messages;
     for (auto row : r) {
-        messages.insert({row["from_user"].as<int>(), row["text"].c_str()});
+		if (row["text"].c_str() != "")
+        	messages.insert({row["from_user"].as<int>(), row["text"].c_str()});
     }
 
-    txn.exec_params("DELETE FROM messages WHERE to_user = $1", user_id);    
     txn.commit();
     
     return messages;
@@ -74,6 +68,9 @@ int main(int argc, char* argv[])
     if(conn.is_open())
     {
         std::cout << "Connected to DB" << std::endl;
+		pqxx::work txn(conn);
+    	txn.exec("DELETE FROM " + txn.quote_name("messages"));
+    	txn.commit();
     }else
     {
         std::cout << "Connection to DB failed";

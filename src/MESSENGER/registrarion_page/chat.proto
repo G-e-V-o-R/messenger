@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package chat;
+
+message chatMessage{
+	string sender_id = 1;
+	string sender_name = 2;
+	string sender_status = 3;
+	string recipient_id = 4;
+	string message_text = 5;
+}
+
+message loginMessage {
+	string username = 1;
+	string password = 2;
+}
+
+message loginResponse {
+	string session_id = 1;
+	string id = 2;
+	repeated chatMessage messages = 3;
+}
+
+message registrationResponse {
+	string text = 1;
+}
+
+service ChatService{
+	rpc chat(stream chatMessage) returns(stream chatMessage);
+	rpc log_in(loginMessage) returns(loginResponse);
+	rpc registration(loginMessage) returns(registrationResponse);
+}

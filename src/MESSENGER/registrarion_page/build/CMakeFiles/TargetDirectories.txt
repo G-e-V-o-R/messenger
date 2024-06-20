@@ -1,0 +1,8 @@
+/home/gevor/Desktop/messenger/src/MESSENGER/registrarion_page/build/CMakeFiles/generate_proto_files.dir
+/home/gevor/Desktop/messenger/src/MESSENGER/registrarion_page/build/CMakeFiles/MyProject.dir
+/home/gevor/Desktop/messenger/src/MESSENGER/registrarion_page/build/CMakeFiles/edit_cache.dir
+/home/gevor/Desktop/messenger/src/MESSENGER/registrarion_page/build/CMakeFiles/rebuild_cache.dir
+/home/gevor/Desktop/messenger/src/MESSENGER/registrarion_page/build/CMakeFiles/list_install_components.dir
+/home/gevor/Desktop/messenger/src/MESSENGER/registrarion_page/build/CMakeFiles/install.dir
+/home/gevor/Desktop/messenger/src/MESSENGER/registrarion_page/build/CMakeFiles/install/local.dir
+/home/gevor/Desktop/messenger/src/MESSENGER/registrarion_page/build/CMakeFiles/install/strip.dir

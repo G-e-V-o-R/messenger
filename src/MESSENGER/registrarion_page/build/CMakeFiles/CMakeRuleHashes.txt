@@ -1,0 +1,5 @@
+# Hashes of file build rules.
+42e352a526244127288eb66d4ee3d149 CMakeFiles/generate_proto_files
+616520eb1782ffdd6afd486ea51e2823 generated/chat.grpc.pb.cc
+e3a5a0c94e6b9aeefd4ef4c7fd8565b8 generated/chat.pb.cc
+aa01605d3a08fbd57c2934cdea221951 ui_mainwindow.h
